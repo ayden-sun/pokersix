@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import {
   Users,
   Trophy,
-  Calendar as CalendarIcon,
   Plus,
   Minus,
   Edit2,
@@ -12,6 +11,7 @@ import {
   Target,
   History,
   ListChecks,
+  Clock
 } from "lucide-react";
 
 /**
@@ -73,7 +73,7 @@ export default function FindingFriendsTracker() {
   const onRename = (idx, name) => {
     updateCurrent((s) => {
       const players = [...s.players];
-      players[idx] = name || `Player ${idx + 1}`;
+      players[idx] = name;
       return { ...s, players };
     });
   };
@@ -108,6 +108,83 @@ export default function FindingFriendsTracker() {
     setBid(START_BID);
     setOpponentScore(0);
   };
+
+  // --- Enhanced Stats ---
+  const enhancedStats = useMemo(() => {
+    const allRounds = Object.values(gameData).flatMap(s => s.rounds);
+    const totalRounds = allRounds.length;
+    
+    // Player stats
+    const playerStats = players.reduce((acc, p) => {
+      acc[p] = { 
+        totalScore: 0, 
+        gamesPlayed: 0, 
+        hosted: 0, 
+        hostWins: 0, 
+        friendGames: 0, 
+        friendWins: 0 
+      };
+      return acc;
+    }, {});
+
+    allRounds.forEach(round => {
+      // Count games played
+      round.players.forEach(p => {
+        if (playerStats[p]) playerStats[p].gamesPlayed += 1;
+      });
+      
+      // Add scores
+      Object.entries(round.scores).forEach(([name, score]) => {
+        if (playerStats[name]) playerStats[name].totalScore += score;
+      });
+      
+      // Host stats
+      if (playerStats[round.host]) {
+        playerStats[round.host].hosted += 1;
+        if (round.winner === "Host" || round.winner === "Host Team") {
+          playerStats[round.host].hostWins += 1;
+        }
+      }
+      
+      // Friend stats
+      round.friends.forEach(friend => {
+        if (playerStats[friend]) {
+          playerStats[friend].friendGames += 1;
+          if (round.winner === "Host" || round.winner === "Host Team") {
+            playerStats[friend].friendWins += 1;
+          }
+        }
+      });
+    });
+
+    // Convert to array and calculate rates
+    const playerRankings = Object.entries(playerStats)
+      .map(([name, stats]) => ({
+        name,
+        totalScore: Math.round(stats.totalScore),
+        gamesPlayed: stats.gamesPlayed,
+        hosted: stats.hosted,
+        hostWins: stats.hostWins,
+        hostRate: stats.hosted > 0 ? Math.round((stats.hostWins / stats.hosted) * 100) : 0,
+        friendGames: stats.friendGames,
+        friendWins: stats.friendWins,
+        friendRate: stats.friendGames > 0 ? Math.round((stats.friendWins / stats.friendGames) * 100) : 0
+      }))
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    // Best performers
+    const bestHost = playerRankings.filter(p => p.hosted >= 3).sort((a, b) => b.hostRate - a.hostRate)[0];
+    const bestFriend = playerRankings.filter(p => p.friendGames >= 3).sort((a, b) => b.friendRate - a.friendRate)[0];
+    const mostGamesPlayed = playerRankings.sort((a, b) => b.gamesPlayed - a.gamesPlayed)[0];
+
+    return {
+      totalRounds,
+      playerRankings,
+      bestHost,
+      bestFriend,
+      mostGamesPlayed
+    };
+  }, [gameData, players]);
 
   // --- Scoring Logic ---
   function calculateScores({ mode, players, hostIdx, friendIdxs, bid, opponentScore }) {
@@ -270,28 +347,6 @@ export default function FindingFriendsTracker() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-sm border">
-              <CalendarIcon className="w-4 h-4 text-slate-500" />
-              <select
-                className="outline-none bg-transparent text-sm"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-              >
-                {allDates.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="text-xs px-2 py-1 rounded-full border hover:bg-slate-50"
-                onClick={() => setSelectedDate(todayLabel())}
-                title="Jump to today"
-              >
-                Today
-              </button>
-            </div>
-
             <div className="flex gap-2">
               <Tab icon={ListChecks} label="New Game" />
               <Tab icon={Trophy} label="Statistics" />
@@ -347,6 +402,7 @@ export default function FindingFriendsTracker() {
                     onChange={(e) => {
                       setMode(e.target.value);
                       setFriends([]);
+                      setBid(e.target.value === "1v5" ? 200 : START_BID);
                     }}
                   >
                     <option value="Normal">Normal</option>
@@ -404,32 +460,38 @@ export default function FindingFriendsTracker() {
                   <label className="text-sm font-medium">Bid</label>
                   <div className="mt-1 flex items-center gap-2">
                     <button
-                      className="p-2 rounded-xl border hover:bg-slate-50"
-                      onClick={() => setBid((b) => (b === NO_BIDS_VALUE ? START_BID : Math.max(START_BID, b - 5)))}
+                      disabled={mode === "1v5" || bid <= 80}
+                      className="p-2 rounded-xl border hover:bg-slate-50 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                      onClick={() => setBid((b) => Math.max(80, b - 5))}
                     >
                       <Minus className="w-4 h-4" />
                     </button>
                     <div className="flex-1 text-center text-lg font-semibold">{bid}</div>
                     <button
-                      className="p-2 rounded-xl border hover:bg-slate-50"
-                      onClick={() => setBid((b) => (b === NO_BIDS_VALUE ? START_BID + 5 : b + 5))}
+                      disabled={mode === "1v5" || bid >= 150}
+                      className="p-2 rounded-xl border hover:bg-slate-50 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                      onClick={() => setBid((b) => Math.min(150, b + 5))}
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                     <button
-                      className="px-3 py-2 rounded-xl border hover:bg-slate-50"
+                      disabled={mode === "1v5"}
+                      className="px-3 py-2 rounded-xl border hover:bg-slate-50 disabled:bg-slate-50 disabled:cursor-not-allowed"
                       onClick={() => setBid(NO_BIDS_VALUE)}
                     >
                       No Bids
                     </button>
                     <button
-                      className="px-3 py-2 rounded-xl border hover:bg-slate-50"
+                      disabled={mode === "1v5"}
+                      className="px-3 py-2 rounded-xl border hover:bg-slate-50 disabled:bg-slate-50 disabled:cursor-not-allowed"
                       onClick={() => setBid(START_BID)}
                     >
                       Reset
                     </button>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Minimum 80, step 5. "No Bids" = 160.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {mode === "1v5" ? "Fixed at 200 for 1v5 mode" : "Range: 80-150, step 5. 'No Bids' = 160."}
+                  </p>
                 </div>
 
                 <div>
@@ -490,54 +552,70 @@ export default function FindingFriendsTracker() {
 
         {activeTab === "Statistics" && (
           <section className="bg-white rounded-2xl shadow-sm border p-4">
-            <h2 className="font-semibold mb-4 flex items-center gap-2"><Trophy className="w-4 h-4" /> Leaderboard & Stats</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="border rounded-2xl p-3">
-                <h3 className="font-medium mb-2">Leaderboard (This Session)</h3>
-                <ul className="divide-y">
-                  {totalsByPlayer.map((row, i) => (
-                    <li key={row.player} className="flex items-center justify-between py-2">
-                      <div className="flex items-center gap-2">
-                        <span className={classNames(
-                          "w-6 h-6 rounded-full text-xs grid place-items-center",
-                          i === 0 ? "bg-amber-100" : i === 1 ? "bg-slate-100" : i === 2 ? "bg-orange-100" : "bg-slate-50"
-                        )}>{i + 1}</span>
-                        <span>{row.player}</span>
-                      </div>
-                      <div className="font-semibold">{Math.round(row.total)}</div>
-                    </li>
-                  ))}
-                  {totalsByPlayer.length === 0 && (
-                    <li className="py-4 text-slate-500 text-sm">No rounds yet.</li>
-                  )}
-                </ul>
+            <h2 className="font-semibold mb-4 flex items-center gap-2"><Trophy className="w-4 h-4" /> Statistical Analysis</h2>
+            
+            {/* Overview Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-slate-50 rounded-xl p-3 text-center">
+                <div className="text-2xl font-bold text-indigo-600">{enhancedStats.totalRounds}</div>
+                <div className="text-sm text-slate-600">Total Rounds</div>
               </div>
+              <div className="bg-slate-50 rounded-xl p-3 text-center">
+                <div className="text-lg font-bold text-green-600">{enhancedStats.bestHost?.name || "—"}</div>
+                <div className="text-sm text-slate-600">Best Host ({enhancedStats.bestHost?.hostRate || 0}%)</div>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 text-center">
+                <div className="text-lg font-bold text-blue-600">{enhancedStats.bestFriend?.name || "—"}</div>
+                <div className="text-sm text-slate-600">Best Friend ({enhancedStats.bestFriend?.friendRate || 0}%)</div>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 text-center">
+                <div className="text-lg font-bold text-purple-600">{enhancedStats.mostGamesPlayed?.name || "—"}</div>
+                <div className="text-sm text-slate-600">Most Games ({enhancedStats.mostGamesPlayed?.gamesPlayed || 0})</div>
+              </div>
+            </div>
 
-              <div className="border rounded-2xl p-3">
-                <h3 className="font-medium mb-2">Player Performance</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {players.map((p) => {
-                    const rs = roleStats[p];
-                    const hostWR = rs.hosted ? Math.round((rs.hostWins / rs.hosted) * 100) : 0;
-                    const friendWR = rs.friendGames ? Math.round((rs.friendWins / rs.friendGames) * 100) : 0;
-                    const total = totalsByPlayer.find((r) => r.player === p)?.total || 0;
-                    return (
-                      <div key={p} className="rounded-xl border p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="font-medium flex items-center gap-2"><Star className="w-4 h-4" /> {p}</div>
-                          <Pill>{Math.round(total)} pts</Pill>
-                        </div>
-                        <div className="text-xs text-slate-600 grid grid-cols-2 gap-1">
-                          <div>Hosted: <b>{rs.hosted}</b></div>
-                          <div>Host WR: <b>{hostWR}%</b></div>
-                          <div>Friend Gms: <b>{rs.friendGames}</b></div>
-                          <div>Friend WR: <b>{friendWR}%</b></div>
-                          <div>Played: <b>{rs.played}</b></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+            {/* Player Rankings */}
+            <div className="border rounded-2xl p-4">
+              <h3 className="font-medium mb-3">Player Rankings</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50">
+                      <th className="text-left p-2">Rank</th>
+                      <th className="text-left p-2">Player</th>
+                      <th className="text-left p-2">Total Score</th>
+                      <th className="text-left p-2">Games</th>
+                      <th className="text-left p-2">Host W/L</th>
+                      <th className="text-left p-2">Host Rate</th>
+                      <th className="text-left p-2">Friend W/L</th>
+                      <th className="text-left p-2">Friend Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enhancedStats.playerRankings.map((player, i) => (
+                      <tr key={player.name} className="border-b hover:bg-slate-50">
+                        <td className="p-2">
+                          <span className={classNames(
+                            "w-6 h-6 rounded-full text-xs grid place-items-center",
+                            i === 0 ? "bg-amber-100" : i === 1 ? "bg-slate-100" : i === 2 ? "bg-orange-100" : "bg-slate-50"
+                          )}>{i + 1}</span>
+                        </td>
+                        <td className="p-2 font-medium">{player.name || `Player ${players.indexOf(player.name) + 1}`}</td>
+                        <td className="p-2 font-semibold">{player.totalScore}</td>
+                        <td className="p-2">{player.gamesPlayed}</td>
+                        <td className="p-2">{player.hostWins}/{player.hosted}</td>
+                        <td className="p-2">{player.hostRate}%</td>
+                        <td className="p-2">{player.friendWins}/{player.friendGames}</td>
+                        <td className="p-2">{player.friendRate}%</td>
+                      </tr>
+                    ))}
+                    {enhancedStats.playerRankings.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="p-4 text-center text-slate-500">No data yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>
@@ -545,19 +623,40 @@ export default function FindingFriendsTracker() {
 
         {activeTab === "Details" && (
           <section className="bg-white rounded-2xl shadow-sm border p-4">
-            <h2 className="font-semibold mb-4 flex items-center gap-2"><History className="w-4 h-4" /> Round History ({selectedDate})</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold flex items-center gap-2"><History className="w-4 h-4" /> Round History</h2>
+              <div className="flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-sm border">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <select
+                  className="outline-none bg-transparent text-sm"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                >
+                  {allDates.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="text-xs px-2 py-1 rounded-full border hover:bg-slate-50"
+                  onClick={() => setSelectedDate(todayLabel())}
+                  title="Jump to today"
+                >
+                  Today
+                </button>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-slate-50">
-                    <th className="text-left p-2">#</th>
-                    <th className="text-left p-2">Mode</th>
+                    <th className="text-left p-2">Round</th>
                     <th className="text-left p-2">Host</th>
                     <th className="text-left p-2">Friends</th>
                     <th className="text-left p-2">Bid</th>
-                    <th className="text-left p-2">Opp Score</th>
+                    <th className="text-left p-2">Opponent Score</th>
                     <th className="text-left p-2">Winner</th>
-                    <th className="text-left p-2">Distribution</th>
                     <th className="text-left p-2">Scores</th>
                   </tr>
                 </thead>
@@ -565,13 +664,11 @@ export default function FindingFriendsTracker() {
                   {rounds.map((r) => (
                     <tr key={r.id} className="border-b hover:bg-slate-50">
                       <td className="p-2">{r.round}</td>
-                      <td className="p-2">{r.mode}</td>
                       <td className="p-2">{r.host}</td>
                       <td className="p-2">{r.friends.join(", ") || "—"}</td>
                       <td className="p-2">{r.bid}</td>
                       <td className="p-2">{r.opponentScore}</td>
                       <td className="p-2">{r.winner}</td>
-                      <td className="p-2">{r.distribution}</td>
                       <td className="p-2">
                         <div className="flex flex-wrap gap-1">
                           {Object.entries(r.scores).map(([name, pts]) => (
@@ -585,7 +682,7 @@ export default function FindingFriendsTracker() {
                   ))}
                   {rounds.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="p-4 text-center text-slate-500">No rounds yet.</td>
+                      <td colSpan={7} className="p-4 text-center text-slate-500">No rounds yet for {selectedDate}.</td>
                     </tr>
                   )}
                 </tbody>
@@ -600,7 +697,7 @@ export default function FindingFriendsTracker() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2 border rounded-2xl p-3">
-                <h3 className="font-medium mb-2 flex items-center gap-2"><CalendarIcon className="w-4 h-4" /> Sessions</h3>
+                <h3 className="font-medium mb-2 flex items-center gap-2"><Clock className="w-4 h-4" /> Sessions</h3>
                 <ul className="divide-y">
                   {allDates.map((d) => {
                     const s = gameData[d];
