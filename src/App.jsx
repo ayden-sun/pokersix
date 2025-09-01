@@ -81,7 +81,7 @@ export default function FindingFriendsTracker() {
   // --- New Game page state ---
   const [mode, setMode] = useState("Normal"); // Normal | 1v5
   const [host, setHost] = useState(0); // index in players
-  const [friends, setFriends] = useState([]); // array of player indexes
+  const [friends, setFriends] = useState([]); // player indexes
   const [bid, setBid] = useState(START_BID);
   const [opponentScore, setOpponentScore] = useState(0);
 
