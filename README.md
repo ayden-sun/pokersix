@@ -17,7 +17,7 @@ Keep track of games, bids, hosts, friends, and statistics with a clean UI.
 
 ## Tech Stack
 - [React](https://reactjs.org/)  
-- [Vite](https://vitejs.dev/)  
+- [Vite](https://vite.dev/)  
 - [Tailwind CSS v3](https://tailwindcss.com/)  
 - [Lucide Icons](https://lucide.dev/)  
 
