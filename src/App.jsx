@@ -626,7 +626,7 @@ export default function FindingFriendsTracker() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold flex items-center gap-2"><History className="w-4 h-4" /> Round History</h2>
               <div className="flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-sm border">
-                <Clock className="w-4 h-4 text-slate-500" />
+                <Clock className="w-4 h-4" />
                 <select
                   className="outline-none bg-transparent text-sm"
                   value={selectedDate}
