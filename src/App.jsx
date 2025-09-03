@@ -371,7 +371,6 @@ export default function FindingFriendsTracker() {
                   value={p}
                   onChange={(e) => onRename(i, e.target.value)}
                 />
-                <Pill>#{i + 1}</Pill>
               </div>
             ))}
           </div>
